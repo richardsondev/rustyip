@@ -68,7 +68,7 @@ jobs:
 
       - name: Add ARM32 Build Dependencies
         if: ${{ contains(matrix.target.rustTarget, 'arm') }}
-        run: sudo apt-get install -y gcc-multilib gcc-arm-linux-gnueabihf gcc-arm-linux-gnueabi gcc-arm-none-eabi
+        run: sudo apt-get install -y gcc-arm-linux-gnueabihf gcc-arm-linux-gnueabi gcc-arm-none-eabi binutils-arm-linux-gnueabi
 
       - name: Add ARM64 Build Dependencies
         if: ${{ contains(matrix.target.rustTarget, 'aarch64') }}
