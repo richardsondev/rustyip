@@ -68,7 +68,7 @@ jobs:
 
       - name: Add ARM32 Build Dependencies
         if: ${{ contains(matrix.target.rustTarget, 'arm') }}
-        run: sudo apt-get install -y lib32z1-dev gcc-arm-linux-gnueabi make git-core ncurses-dev
+        run: sudo apt-get install -y gcc-multilib gcc-arm-none-eabi
 
       - name: Add ARM64 Build Dependencies
         if: ${{ contains(matrix.target.rustTarget, 'aarch64') }}
