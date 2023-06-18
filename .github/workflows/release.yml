@@ -68,7 +68,7 @@ jobs:
 
       - name: Add ARM32 Build Dependencies
         if: ${{ contains(matrix.target.rustTarget, 'arm') }}
-        run: sudo apt-get install -y libc6-armel-cross libc6-dev-armel-cross binutils-arm-linux-gnueabi libncurses5-dev build-essential bison flex libssl-dev bc
+        run: sudo apt-get install -y lib32z1-dev gcc-arm-linux-gnueabi make git-core ncurses-dev
 
       - name: Add ARM64 Build Dependencies
         if: ${{ contains(matrix.target.rustTarget, 'aarch64') }}
