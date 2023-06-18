@@ -1,7 +1,7 @@
 # RustyIP client
 A containerized version of a proprietary dynamic DNS client. Backend not included.
 
-## Supported
+## Container support
 * ARM32
 * ARM64
 * X64
