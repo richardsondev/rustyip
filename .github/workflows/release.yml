@@ -3,12 +3,12 @@ name: CI
 on:
   push:
     branches:
-      - master
+      - main
   release:
     types: [released]
   pull_request:
     branches:
-      - master
+      - main
 
 jobs:
   build:
@@ -69,8 +69,8 @@ jobs:
       - name: Upload Asset
         uses: actions/upload-artifact@v3
         with:
-          name: rustyip-${{ matrix.target.rustTarget }}${{ endsWith(matrix.target.rustTarget, '-windows-gnu') && '.exe' || '' }}
-          path: ./target/${{ matrix.target.rustTarget }}/release/rustyip${{ endsWith(matrix.target.rustTarget, '-windows-gnu') && '.exe' || '' }}
+          name: RustyIP-${{ matrix.target.rustTarget }}${{ endsWith(matrix.target.rustTarget, '-windows-gnu') && '.exe' || '' }}
+          path: ./target/${{ matrix.target.rustTarget }}/release/RustyIP${{ endsWith(matrix.target.rustTarget, '-windows-gnu') && '.exe' || '' }}
 
       - name: Upload Release Asset
         if: github.event_name == 'release'
@@ -78,5 +78,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run:
-          cp ./target/${{ matrix.target.rustTarget }}/release/rustyip${{ endsWith(matrix.target.rustTarget, '-windows-gnu') && '.exe' || '' }} ./rustyip-${{ github.ref_name }}-${{ matrix.target.rustTarget }}${{ endsWith(matrix.target.rustTarget, '-windows-gnu') && '.exe' || '' }} &&
-          gh release upload ${{ github.event.release.tag_name }} ./rustyip-${{ github.ref_name }}-${{ matrix.target.rustTarget }}${{ endsWith(matrix.target.rustTarget, '-windows-gnu') && '.exe' || '' }}#"rustyip-${{ github.ref_name }}-${{ matrix.target.rustTarget }}${{ endsWith(matrix.target.rustTarget, '-windows-gnu') && '.exe' || '' }} (${{ matrix.target.displayName }})"
+          cp ./target/${{ matrix.target.rustTarget }}/release/RustyIP${{ endsWith(matrix.target.rustTarget, '-windows-gnu') && '.exe' || '' }} ./RustyIP-${{ github.ref_name }}-${{ matrix.target.rustTarget }}${{ endsWith(matrix.target.rustTarget, '-windows-gnu') && '.exe' || '' }} &&
+          gh release upload ${{ github.event.release.tag_name }} ./RustyIP-${{ github.ref_name }}-${{ matrix.target.rustTarget }}${{ endsWith(matrix.target.rustTarget, '-windows-gnu') && '.exe' || '' }}#"RustyIP-${{ github.ref_name }}-${{ matrix.target.rustTarget }}${{ endsWith(matrix.target.rustTarget, '-windows-gnu') && '.exe' || '' }} (${{ matrix.target.displayName }})"
