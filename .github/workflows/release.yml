@@ -72,7 +72,7 @@ jobs:
 
       - name: Add ARM64 Build Dependencies
         if: ${{ contains(matrix.target.rustTarget, 'aarch64') }}
-        run: sudo apt-get install -y gcc-aarch64-linux-gnu
+        run: sudo apt-get install -y gcc-aarch64-linux-gnu crossbuild-essential-arm64
 
       - name: Add 32-bit Linux Build Dependencies
         if: ${{ contains(matrix.target.rustTarget, 'i686-unknown-linux-gnu') }}
