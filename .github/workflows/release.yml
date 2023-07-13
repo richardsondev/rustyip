@@ -62,21 +62,25 @@ jobs:
       - name: Add Rust Target
         run: rustup target add ${{ matrix.target.rustTarget }}
 
+      - name: Update Sources
+        if: ${{ contains(matrix.target.rustTarget, 'linux') }}
+        run: sudo apt update
+
       - name: Add Windows Build Dependencies
         if: ${{ contains(matrix.target.rustTarget, 'pc-windows') }}
-        run: sudo apt-get install -y gcc-mingw-w64
+        run: sudo apt install -y gcc-mingw-w64
 
       - name: Add ARM32 Build Dependencies
         if: ${{ contains(matrix.target.rustTarget, 'arm') }}
-        run: sudo apt-get install -y gcc-arm-linux-gnueabihf gcc-arm-linux-gnueabi gcc-arm-none-eabi binutils-arm-linux-gnueabi
+        run: sudo apt install -y gcc-arm-linux-gnueabihf gcc-arm-linux-gnueabi gcc-arm-none-eabi binutils-arm-linux-gnueabi
 
       - name: Add ARM64 Build Dependencies
         if: ${{ contains(matrix.target.rustTarget, 'aarch64') }}
-        run: sudo apt-get install -y gcc-aarch64-linux-gnu crossbuild-essential-arm64
+        run: sudo apt install -y gcc-aarch64-linux-gnu crossbuild-essential-arm64
 
       - name: Add 32-bit Linux Build Dependencies
         if: ${{ contains(matrix.target.rustTarget, 'i686-unknown-linux-gnu') }}
-        run: sudo apt-get install -y gcc-multilib
+        run: sudo apt install -y gcc-multilib
 
       # Build time
       - name: Build
