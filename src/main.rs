@@ -20,7 +20,7 @@ fn random_hex(len: usize) -> String {
 async fn retry<F, Fut, T, E>(mut f: F, delay_seconds: u64, tries: usize) -> Result<T, E>
 where
     F: FnMut() -> Fut,
-    Fut: Future<Output = Result<T, E>>
+    Fut: Future<Output = Result<T, E>>,
 {
     let mut delay = delay_seconds;
     for _ in 0..tries {
