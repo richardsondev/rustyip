@@ -9,7 +9,7 @@ use serde_json::Value;
 use std::future::Future;
 
 const HEX_CHARS: &[u8] = b"abcdef0123456789";
-const RETRY_DELAY: u64 = 2;
+const RETRY_DELAY: u64 = 30;
 
 fn random_hex(len: usize) -> String {
     let mut rng = rand::thread_rng();
