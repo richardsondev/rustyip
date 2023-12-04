@@ -9,8 +9,7 @@ use serde_json::Value;
 use std::future::Future;
 
 const HEX_CHARS: &[u8] = b"abcdef0123456789";
-const RETRY_DELAY: u64 = 2;
-const CONNECTION_RETRY_DELAY: u64 = 180;
+const RETRY_DELAY: u64 = 30;
 
 fn random_hex(len: usize) -> String {
     let mut rng = rand::thread_rng();
@@ -26,17 +25,7 @@ where
     for _ in 0..tries {
         match f().await {
             Ok(val) => return Ok(val),
-            Err(e) => {
-                if let Some(reqwest_error) = e.downcast_ref::<ReqwestError>() {
-                    if reqwest_error.is_connect() {
-                        // Connection error specific handling
-                        eprintln!("Connection error encountered: {:?}", reqwest_error);
-                        sleep(Duration::from_secs(EXTENDED_RETRY_DELAY)).await;
-                        continue; // Skip the standard delay increase
-                    }
-                }
-                // For other errors, use the standard delay logic
-                eprintln!("Error encountered: {:?}", e);
+            Err(_) => {
                 sleep(Duration::from_secs(delay)).await;
                 delay *= 2;
             }
