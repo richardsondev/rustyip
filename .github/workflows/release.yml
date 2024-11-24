@@ -68,22 +68,12 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
  
-      - name: Set up Rust toolchain
-        id: rust-setup
-        run: |
-          if [[ "${{ matrix.target }}" == *"mips64"* ]]; then
-            echo "toolchain=nightly" >> $GITHUB_ENV
-          else
-            echo "toolchain=stable" >> $GITHUB_ENV
-          fi
-        shell: bash
-
-      - name: Install Rust
+      - name: Install latest nightly
+        if: ${{ contains(matrix.target.rustTarget, 'mips64') }}
         uses: actions-rs/toolchain@v1
         with:
-          profile: minimal
-          toolchain: ${{ env.toolchain }}
-          override: true
+            toolchain: ${{ env.toolchain }}
+            override: true
 
       - name: Add Rust Target
         run: rustup target add ${{ matrix.target.rustTarget }}
