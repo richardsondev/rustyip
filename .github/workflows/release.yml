@@ -78,6 +78,7 @@ jobs:
             components: rust-src
 
       - name: Add Rust Target
+        if: ${{ !matrix.target.nightly || true }}
         run: rustup target add ${{ matrix.target.rustTarget }}
 
       - name: Update Sources
