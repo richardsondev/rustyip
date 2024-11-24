@@ -78,7 +78,7 @@ jobs:
             components: rust-src
 
       - name: Add Rust Target
-        if: ${{ !matrix.target.nightly || true }}
+        if: ${{ !matrix.target.nightly }}
         run: rustup target add ${{ matrix.target.rustTarget }}
 
       - name: Update Sources
@@ -107,7 +107,7 @@ jobs:
 
       # Build time
       - name: Build
-        if: ${{ !matrix.target.nightly || true }}
+        if: ${{ !matrix.target.nightly }}
         run: cargo build --release --target ${{ matrix.target.rustTarget }}
 
       - name: Build with nightly
