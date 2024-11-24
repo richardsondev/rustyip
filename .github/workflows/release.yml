@@ -104,11 +104,15 @@ jobs:
 
       - name: Add MIPS32 musl Build Dependencies
         if: ${{ contains(matrix.target.rustTarget, 'mips-unknown-linux-musl') }}
-        run: sudo apt install -y musl-tools gcc-mips-linux-gnu
+        run: |
+          sudo apt install -y musl-tools gcc-mips-linux-gnu
+          export PATH=/opt/mips-linux-musl-cross/bin:$PATH
 
       - name: Add MIPS64 musl Build Dependencies
         if: ${{ contains(matrix.target.rustTarget, 'mips64-unknown-linux-musl') }}
-        run: sudo apt install -y musl-tools gcc-mips64-linux-gnuabi64
+        run: |
+          sudo apt install -y musl-tools gcc-mips64-linux-gnuabi64
+          export PATH=/opt/mips64-linux-musl-cross/bin:$PATH
 
       - name: Add 32-bit Linux Build Dependencies
         if: ${{ contains(matrix.target.rustTarget, 'i686-unknown-linux-gnu') }}
