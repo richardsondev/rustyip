@@ -50,7 +50,7 @@ jobs:
               runner: 'ubuntu-latest' }
 
           - { displayName: MIPS64 Linux,
-              rustTarget: mips64-unknown-linux-gnu,
+              rustTarget: mips64-unknown-linux-gnuabi64,
               runner: 'ubuntu-latest' }
 
           # macOS
@@ -59,7 +59,7 @@ jobs:
               runner: 'macos-latest' }
     
           - { displayName: ARM64 macOS,
-              rustTarget: arm64e-apple-darwin,
+              rustTarget: aarch64-apple-darwin,
               runner: 'macos-latest' }
 
     runs-on: ${{ matrix.target.runner }}
