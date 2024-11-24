@@ -6,3 +6,9 @@ linker = "arm-linux-gnueabihf-gcc"
 
 [target.arm-unknown-linux-gnueabi]
 linker = "arm-linux-gnueabi-gcc"
+
+[target.mips64-unknown-linux-gnuabi64]
+linker = "mips64-linux-gnuabi64-gcc"
+
+[unstable]
+build-std = ["std", "core", "alloc"]
