@@ -72,7 +72,7 @@ jobs:
         if: ${{ contains(matrix.target.rustTarget, 'mips64') }}
         uses: actions-rs/toolchain@v1
         with:
-            toolchain: ${{ env.toolchain }}
+            toolchain: nightly
             override: true
 
       - name: Add Rust Target
