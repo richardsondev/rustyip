@@ -59,7 +59,7 @@ jobs:
               runner: 'macos-latest' }
     
           - { displayName: ARM64 macOS,
-              rustTarget: arm64-apple-darwin,
+              rustTarget: arm64e-apple-darwin,
               runner: 'macos-latest' }
 
     runs-on: ${{ matrix.target.runner }}
