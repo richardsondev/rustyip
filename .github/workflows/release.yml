@@ -51,7 +51,8 @@ jobs:
 
           - { displayName: MIPS64 Linux,
               rustTarget: mips64-unknown-linux-gnuabi64,
-              runner: 'ubuntu-latest' }
+              runner: 'ubuntu-latest',
+              nightly: true }
 
           # macOS
           - { displayName: 64-bit macOS,
@@ -69,11 +70,12 @@ jobs:
         uses: actions/checkout@v4
  
       - name: Install latest nightly
-        if: ${{ contains(matrix.target.rustTarget, 'mips64') }}
+        if: ${{ matrix.target.nightly || false }}
         uses: actions-rs/toolchain@v1
         with:
             toolchain: nightly
             override: true
+            components: rust-src
 
       - name: Add Rust Target
         run: rustup target add ${{ matrix.target.rustTarget }}
@@ -104,7 +106,12 @@ jobs:
 
       # Build time
       - name: Build
+        if: ${{ !matrix.target.nightly || true }}
         run: cargo build --release --target ${{ matrix.target.rustTarget }}
+
+      - name: Build with nightly
+        if: ${{ matrix.target.nightly || false }}
+        run: cargo +nightly build -Z build-std --release --target ${{ matrix.target.rustTarget }}
 
       - name: Upload Asset
         uses: actions/upload-artifact@v4
