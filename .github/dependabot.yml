@@ -4,7 +4,28 @@ updates:
     directory: "/"
     schedule:
       interval: "monthly"
+    labels:
+      - "dependencies"
+      - "cargo"
+    assignees:
+      - "richardsondev"
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "monthly"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    assignees:
+      - "richardsondev"
+
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    labels:
+      - "dependencies"
+      - "docker"
+    assignees:
+      - "richardsondev"
