@@ -49,10 +49,19 @@ jobs:
               rustTarget: aarch64-unknown-linux-gnu,
               runner: 'ubuntu-latest' }
 
-          - { displayName: MIPS64 Linux,
+          - { displayName: 64-bit Linux (musl),
+              rustTarget: x86_64-unknown-linux-musl,
+              runner: 'ubuntu-latest' }
+
+          - { displayName: MIPS64 Linux (Big Endian),
               rustTarget: mips64-unknown-linux-gnuabi64,
               runner: 'ubuntu-latest',
               nightly: true }
+
+          #- { displayName: MIPS64 Linux (Little Endian),
+          #    rustTarget: mips64el-unknown-linux-gnuabi64,
+          #    runner: 'ubuntu-latest',
+          #    nightly: true }
 
           # macOS
           - { displayName: 64-bit macOS,
@@ -104,8 +113,16 @@ jobs:
         run: sudo apt install -y gcc-aarch64-linux-gnu crossbuild-essential-arm64
   
       - name: Add MIPS64 Build Dependencies
-        if: ${{ contains(matrix.target.rustTarget, 'mips64') }}
+        if: ${{ contains(matrix.target.rustTarget, 'mips64-unknown-linux-gnuabi64') }}
         run: sudo apt install -y gcc-mips64-linux-gnuabi64 crossbuild-essential-mips64
+
+      - name: Add MIPS64 Little Endian Build Dependencies
+        if: ${{ matrix.target.rustTarget == 'mips64el-unknown-linux-gnuabi64' }}
+        run: sudo apt install -y gcc-mips64el-linux-gnuabi64 crossbuild-essential-mips64el
+
+      - name: Add MUSL Build Dependencies
+        if: ${{ matrix.target.rustTarget == 'x86_64-unknown-linux-musl' }}
+        run: sudo apt install -y musl-tools
 
       - name: Add 32-bit Linux Build Dependencies
         if: ${{ contains(matrix.target.rustTarget, 'i686-unknown-linux-gnu') }}
@@ -118,6 +135,8 @@ jobs:
 
       - name: Build with nightly
         if: ${{ matrix.target.nightly || false }}
+        env:
+          RUSTFLAGS: ${{ (startsWith(matrix.target.rustTarget, 'mips64') && '-C target-feature=+crt-static') || '' }}
         run: cargo +nightly build -Z build-std --release --target ${{ matrix.target.rustTarget }}
 
       - name: Upload Asset
@@ -134,3 +153,28 @@ jobs:
         run:
           cp ./target/${{ matrix.target.rustTarget }}/release/RustyIP${{ endsWith(matrix.target.rustTarget, '-windows-gnu') && '.exe' || '' }} ./RustyIP-${{ github.ref_name }}-${{ matrix.target.rustTarget }}${{ endsWith(matrix.target.rustTarget, '-windows-gnu') && '.exe' || '' }} &&
           gh release upload ${{ github.event.release.tag_name }} ./RustyIP-${{ github.ref_name }}-${{ matrix.target.rustTarget }}${{ endsWith(matrix.target.rustTarget, '-windows-gnu') && '.exe' || '' }}#"RustyIP-${{ github.ref_name }}-${{ matrix.target.rustTarget }}${{ endsWith(matrix.target.rustTarget, '-windows-gnu') && '.exe' || '' }} (${{ matrix.target.displayName }})"
+
+  build-docs:
+    name: Generate Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install Rust toolchain (stable)
+        uses: actions-rs/toolchain@v1
+        with:
+            toolchain: stable
+            override: true
+
+      - name: Generate Rust documentation
+        run: cargo doc --no-deps --document-private-items
+
+      - name: Upload Documentation Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RustyIP-documentation
+          path: target/doc
+          retention-days: 90

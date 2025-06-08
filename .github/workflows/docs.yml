@@ -1,0 +1,57 @@
+name: Deploy content to Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build and Deploy Documentation
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Generate Rust documentation
+        run: cargo doc --no-deps --document-private-items
+
+      - name: Create staging directory for GitHub Pages content
+        run: mkdir -p gh-pages-stage/docs
+
+      - name: Copy README.md to staging root as index.md
+        run: cp README.md gh-pages-stage/index.md
+
+      - name: Copy generated docs to staging/docs
+        run: cp -r target/doc/rustyip/* gh-pages-stage/docs/
+
+      - name: Create .nojekyll file in staging root
+        run: touch gh-pages-stage/.nojekyll
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./gh-pages-stage
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
