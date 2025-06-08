@@ -58,10 +58,10 @@ jobs:
               runner: 'ubuntu-latest',
               nightly: true }
 
-          - { displayName: MIPS64 Linux (Little Endian),
-              rustTarget: mips64el-unknown-linux-gnuabi64,
-              runner: 'ubuntu-latest',
-              nightly: true }
+          #- { displayName: MIPS64 Linux (Little Endian),
+          #    rustTarget: mips64el-unknown-linux-gnuabi64,
+          #    runner: 'ubuntu-latest',
+          #    nightly: true }
 
           # macOS
           - { displayName: 64-bit macOS,
