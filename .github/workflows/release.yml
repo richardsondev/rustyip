@@ -29,7 +29,7 @@ jobs:
               runner: 'ubuntu-latest' }
 
           - { displayName: 64-bit Windows (znver3),
-              displaySubName: znver3
+              displaySubName: znver3,
               rustTarget: x86_64-pc-windows-gnu,
               runner: 'ubuntu-latest',
               rustflags: '-C target-cpu=znver3' }
@@ -44,7 +44,7 @@ jobs:
               runner: 'ubuntu-latest' }
 
           - { displayName: 64-bit Linux (znver3),
-              displaySubName: znver3
+              displaySubName: znver3,
               rustTarget: x86_64-unknown-linux-gnu,
               runner: 'ubuntu-latest',
               rustflags: '-C target-cpu=znver3' }
