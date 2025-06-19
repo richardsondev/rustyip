@@ -28,6 +28,11 @@ jobs:
               rustTarget: x86_64-pc-windows-gnu,
               runner: 'ubuntu-latest' }
 
+          - { displayName: 64-bit Windows (znver3),
+              rustTarget: x86_64-pc-windows-gnu,
+              runner: 'ubuntu-latest',
+              rustflags: '-C target-cpu=znver3' }
+
           # Linux
           - { displayName: 32-bit Linux,
               rustTarget: i686-unknown-linux-gnu,
@@ -36,6 +41,11 @@ jobs:
           - { displayName: 64-bit Linux,
               rustTarget: x86_64-unknown-linux-gnu,
               runner: 'ubuntu-latest' }
+
+          - { displayName: 64-bit Linux (znver3),
+              rustTarget: x86_64-unknown-linux-gnu,
+              runner: 'ubuntu-latest',
+              rustflags: '-C target-cpu=znver3' }
 
           - { displayName: ARM32 ARMv6 Linux,
               rustTarget: arm-unknown-linux-gnueabi,
@@ -58,7 +68,7 @@ jobs:
           - { displayName: 64-bit macOS,
               rustTarget: x86_64-apple-darwin,
               runner: 'macos-latest' }
-    
+
           - { displayName: ARM64 macOS,
               rustTarget: aarch64-apple-darwin,
               runner: 'macos-latest' }
@@ -114,11 +124,17 @@ jobs:
       # Build time
       - name: Build
         if: ${{ !matrix.target.nightly }}
-        run: cargo build --release --target ${{ matrix.target.rustTarget }}
+        env:
+          RUSTFLAGS: ${{ matrix.target.rustflags || '' }}
+        run: |
+          cargo build --release --target ${{ matrix.target.rustTarget }}
 
       - name: Build with nightly
         if: ${{ matrix.target.nightly || false }}
-        run: cargo +nightly build -Z build-std --release --target ${{ matrix.target.rustTarget }}
+        env:
+          RUSTFLAGS: ${{ matrix.target.rustflags || '' }}
+        run: |
+          cargo +nightly build -Z build-std --release --target ${{ matrix.target.rustTarget }}
 
       - name: Upload Asset
         uses: actions/upload-artifact@v4
@@ -131,6 +147,6 @@ jobs:
         id: upload-release-asset
         env:
           GH_TOKEN: ${{ github.token }}
-        run:
+        run: |
           cp ./target/${{ matrix.target.rustTarget }}/release/RustyIP${{ endsWith(matrix.target.rustTarget, '-windows-gnu') && '.exe' || '' }} ./RustyIP-${{ github.ref_name }}-${{ matrix.target.rustTarget }}${{ endsWith(matrix.target.rustTarget, '-windows-gnu') && '.exe' || '' }} &&
           gh release upload ${{ github.event.release.tag_name }} ./RustyIP-${{ github.ref_name }}-${{ matrix.target.rustTarget }}${{ endsWith(matrix.target.rustTarget, '-windows-gnu') && '.exe' || '' }}#"RustyIP-${{ github.ref_name }}-${{ matrix.target.rustTarget }}${{ endsWith(matrix.target.rustTarget, '-windows-gnu') && '.exe' || '' }} (${{ matrix.target.displayName }})"
