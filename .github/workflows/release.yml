@@ -29,6 +29,7 @@ jobs:
               runner: 'ubuntu-latest' }
 
           - { displayName: 64-bit Windows (znver3),
+              displaySubName: znver3
               rustTarget: x86_64-pc-windows-gnu,
               runner: 'ubuntu-latest',
               rustflags: '-C target-cpu=znver3' }
@@ -43,6 +44,7 @@ jobs:
               runner: 'ubuntu-latest' }
 
           - { displayName: 64-bit Linux (znver3),
+              displaySubName: znver3
               rustTarget: x86_64-unknown-linux-gnu,
               runner: 'ubuntu-latest',
               rustflags: '-C target-cpu=znver3' }
@@ -139,7 +141,7 @@ jobs:
       - name: Upload Asset
         uses: actions/upload-artifact@v4
         with:
-          name: RustyIP-${{ matrix.target.rustTarget }}${{ endsWith(matrix.target.rustTarget, '-windows-gnu') && '.exe' || '' }}
+          name: RustyIP-${{ matrix.target.rustTarget }}${{ matrix.target.displaySubName != '' && format('-{0}', matrix.target.displaySubName) || '' }}${{ endsWith(matrix.target.rustTarget, '-windows-gnu') && '.exe' || '' }}
           path: ./target/${{ matrix.target.rustTarget }}/release/RustyIP${{ endsWith(matrix.target.rustTarget, '-windows-gnu') && '.exe' || '' }}
 
       - name: Upload Release Asset
