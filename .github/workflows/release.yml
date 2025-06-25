@@ -22,58 +22,79 @@ jobs:
           # Windows
           - { displayName: 32-bit Windows,
               rustTarget: i686-pc-windows-gnu,
-              runner: 'ubuntu-latest' }
+              runner: ubuntu-latest }
 
           - { displayName: 64-bit Windows,
               rustTarget: x86_64-pc-windows-gnu,
-              runner: 'ubuntu-latest' }
+              runner: ubuntu-latest,
+              rustflags: '-C target-cpu=x86-64 -C target-feature=-avx,-avx2,-bmi,-bmi2,-fma' }
+
+          - { displayName: 64-bit Windows (skylake),
+              displaySubName: skylake,
+              rustTarget: x86_64-pc-windows-gnu,
+              runner: ubuntu-latest,
+              rustflags: '-C target-cpu=skylake' }
 
           - { displayName: 64-bit Windows (znver3),
               displaySubName: znver3,
               rustTarget: x86_64-pc-windows-gnu,
-              runner: 'ubuntu-latest',
+              runner: ubuntu-latest,
               rustflags: '-C target-cpu=znver3' }
 
           # Linux
           - { displayName: 32-bit Linux,
               rustTarget: i686-unknown-linux-gnu,
-              runner: 'ubuntu-latest' }
+              runner: ubuntu-latest }
 
           - { displayName: 64-bit Linux,
               rustTarget: x86_64-unknown-linux-gnu,
-              runner: 'ubuntu-latest' }
+              runner: ubuntu-latest,
+              rustflags: '-C target-cpu=x86-64 -C target-feature=-avx,-avx2,-bmi,-bmi2,-fma' }
+
+          - { displayName: 64-bit Linux (skylake),
+              displaySubName: skylake,
+              rustTarget: x86_64-unknown-linux-gnu,
+              runner: ubuntu-latest,
+              rustflags: '-C target-cpu=skylake' }
 
           - { displayName: 64-bit Linux (znver3),
               displaySubName: znver3,
               rustTarget: x86_64-unknown-linux-gnu,
-              runner: 'ubuntu-latest',
+              runner: ubuntu-latest,
               rustflags: '-C target-cpu=znver3' }
 
           - { displayName: ARM32 ARMv6 Linux,
               rustTarget: arm-unknown-linux-gnueabi,
-              runner: 'ubuntu-latest' }
+              runner: ubuntu-latest }
 
           - { displayName: ARM32 ARMv7 Linux,
               rustTarget: armv7-unknown-linux-gnueabihf,
-              runner: 'ubuntu-latest' }
+              runner: ubuntu-latest }
 
           - { displayName: ARM64 Linux,
               rustTarget: aarch64-unknown-linux-gnu,
-              runner: 'ubuntu-latest' }
+              runner: ubuntu-latest }
 
           - { displayName: MIPS64 Linux,
               rustTarget: mips64-unknown-linux-gnuabi64,
-              runner: 'ubuntu-latest',
+              runner: ubuntu-latest,
               nightly: true }
 
           # macOS
           - { displayName: 64-bit macOS,
               rustTarget: x86_64-apple-darwin,
-              runner: 'macos-latest' }
+              runner: macos-latest,
+              rustflags: '-C target-cpu=x86-64 -C target-feature=-avx,-avx2,-bmi,-bmi2,-fma' }
+
+          - { displayName: 64-bit macOS (skylake),
+              displaySubName: skylake,
+              rustTarget: x86_64-apple-darwin,
+              runner: macos-latest,
+              rustflags: '-C target-cpu=skylake' }
 
           - { displayName: ARM64 macOS,
               rustTarget: aarch64-apple-darwin,
-              runner: 'macos-latest' }
+              runner: macos-latest }
 
     runs-on: ${{ matrix.target.runner }}
     steps:
