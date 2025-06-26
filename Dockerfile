@@ -11,10 +11,24 @@ COPY . .
 
 # Install cross-compilation dependencies and determine target
 RUN apt-get update && apt-get install -y \
-    gcc-aarch64-linux-gnu \
-    gcc-arm-linux-gnueabihf \
+    gcc-multilib \
+    libc6-dev-i386 \
     musl-tools \
     && rm -rf /var/lib/apt/lists/*
+
+# Install cross-compilation toolchains based on architecture
+RUN case "${TARGETARCH}" in \
+    "arm64") \
+        apt-get update && \
+        apt-get install -y gcc-aarch64-linux-gnu libc6-dev-arm64-cross && \
+        rm -rf /var/lib/apt/lists/* ;; \
+    "arm") \
+        apt-get update && \
+        apt-get install -y gcc-arm-linux-gnueabihf libc6-dev-armhf-cross && \
+        rm -rf /var/lib/apt/lists/* ;; \
+    *) \
+        echo "No additional cross-compilation tools needed for ${TARGETARCH}" ;; \
+    esac
 
 # Add musl targets for static compilation based on architecture
 RUN case "${TARGETARCH}" in \
