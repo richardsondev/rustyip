@@ -32,7 +32,7 @@ jobs:
         run: |
           echo "🔨 Building and testing Docker image for all platforms..."
           docker buildx build \
-            --platform linux/amd64,linux/arm64,linux/arm/v7 \
+            --platform linux/amd64,linux/arm64,linux/arm/v7,linux/arm/v6,linux/386 \
             --target tester \
             -t rustyip:test \
             .
@@ -42,7 +42,7 @@ jobs:
         run: |
           echo "🚀 Building production Docker images for all platforms..."
           # Build and save individual platform images for artifacts
-          for platform in "linux/amd64" "linux/arm64" "linux/arm/v7"; do
+          for platform in "linux/amd64" "linux/arm64" "linux/arm/v7" "linux/arm/v6" "linux/386"; do
             platform_tag=$(echo "$platform" | tr '/' '-')
             echo "Building for $platform..."
             docker buildx build \
@@ -56,7 +56,7 @@ jobs:
       - name: Archive Docker Images
         run: |
           echo "📦 Saving Docker images to tar archives..."
-          for platform in "linux/amd64" "linux/arm64" "linux/arm/v7"; do
+          for platform in "linux/amd64" "linux/arm64" "linux/arm/v7" "linux/arm/v6" "linux/386"; do
             platform_tag=$(echo "$platform" | tr '/' '-')
             echo "Archiving rustyip:production-${platform_tag}..."
             docker save rustyip:production-${platform_tag} | gzip > rustyip-container-${platform_tag}.tar.gz
@@ -118,7 +118,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          platforms: linux/amd64,linux/arm64,linux/arm/v7,linux/arm/v6,linux/386
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

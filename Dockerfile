@@ -24,7 +24,7 @@ RUN case "${TARGETARCH}" in \
         rm -rf /var/lib/apt/lists/* ;; \
     "arm") \
         apt-get update && \
-        apt-get install -y gcc-arm-linux-gnueabihf libc6-dev-armhf-cross && \
+        apt-get install -y gcc-arm-linux-gnueabihf libc6-dev-armhf-cross gcc-arm-linux-gnueabi libc6-dev-armel-cross && \
         rm -rf /var/lib/apt/lists/* ;; \
     *) \
         echo "No additional cross-compilation tools needed for ${TARGETARCH}" ;; \
@@ -35,12 +35,25 @@ RUN case "${TARGETARCH}" in \
     "amd64") \
         rustup target add x86_64-unknown-linux-musl && \
         echo "x86_64-unknown-linux-musl" > /tmp/rust_target ;; \
+    "386") \
+        rustup target add i686-unknown-linux-musl && \
+        echo "i686-unknown-linux-musl" > /tmp/rust_target ;; \
     "arm64") \
         rustup target add aarch64-unknown-linux-musl && \
         echo "aarch64-unknown-linux-musl" > /tmp/rust_target ;; \
     "arm") \
-        rustup target add armv7-unknown-linux-musleabihf && \
-        echo "armv7-unknown-linux-musleabihf" > /tmp/rust_target ;; \
+        # Detect ARM variant from TARGETPLATFORM for proper target selection
+        case "${TARGETPLATFORM}" in \
+            *"v6"*) \
+                rustup target add arm-unknown-linux-musleabi && \
+                echo "arm-unknown-linux-musleabi" > /tmp/rust_target ;; \
+            *"v7"*) \
+                rustup target add armv7-unknown-linux-musleabihf && \
+                echo "armv7-unknown-linux-musleabihf" > /tmp/rust_target ;; \
+            *) \
+                rustup target add armv7-unknown-linux-musleabihf && \
+                echo "armv7-unknown-linux-musleabihf" > /tmp/rust_target ;; \
+        esac ;; \
     *) \
         echo "Unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
     esac
@@ -48,9 +61,15 @@ RUN case "${TARGETARCH}" in \
 # Set up cross-compilation environment
 RUN RUST_TARGET=$(cat /tmp/rust_target) && \
     case "${RUST_TARGET}" in \
+    "i686-unknown-linux-musl") \
+        echo "[target.i686-unknown-linux-musl]" >> ~/.cargo/config.toml && \
+        echo "linker = \"gcc\"" >> ~/.cargo/config.toml ;; \
     "aarch64-unknown-linux-musl") \
         echo "[target.aarch64-unknown-linux-musl]" >> ~/.cargo/config.toml && \
         echo "linker = \"aarch64-linux-gnu-gcc\"" >> ~/.cargo/config.toml ;; \
+    "arm-unknown-linux-musleabi") \
+        echo "[target.arm-unknown-linux-musleabi]" >> ~/.cargo/config.toml && \
+        echo "linker = \"arm-linux-gnueabi-gcc\"" >> ~/.cargo/config.toml ;; \
     "armv7-unknown-linux-musleabihf") \
         echo "[target.armv7-unknown-linux-musleabihf]" >> ~/.cargo/config.toml && \
         echo "linker = \"arm-linux-gnueabihf-gcc\"" >> ~/.cargo/config.toml ;; \
@@ -85,10 +104,17 @@ RUN chmod +x generate-test-certs.sh&& ./generate-test-certs.sh&& python3 e2e-int
 # 3. Distroless Stage
 FROM gcr.io/distroless/static-debian12@sha256:5c7e2b465ac6a2a4e5d4bad46165e4f6c4d3b71fe7bb267d3c73e38095cf2e65
 ARG TARGETARCH
+ARG TARGETPLATFORM
 RUN case "${TARGETARCH}" in \
     "amd64") echo "x86_64-unknown-linux-musl" > /tmp/rust_target ;; \
+    "386") echo "i686-unknown-linux-musl" > /tmp/rust_target ;; \
     "arm64") echo "aarch64-unknown-linux-musl" > /tmp/rust_target ;; \
-    "arm") echo "armv7-unknown-linux-musleabihf" > /tmp/rust_target ;; \
+    "arm") \
+        case "${TARGETPLATFORM}" in \
+            *"v6"*) echo "arm-unknown-linux-musleabi" > /tmp/rust_target ;; \
+            *"v7"*) echo "armv7-unknown-linux-musleabihf" > /tmp/rust_target ;; \
+            *) echo "armv7-unknown-linux-musleabihf" > /tmp/rust_target ;; \
+        esac ;; \
     esac
 COPY --from=builder /usr/src/RustyIP/target/$(cat /tmp/rust_target)/release/RustyIP /usr/local/bin/
 
