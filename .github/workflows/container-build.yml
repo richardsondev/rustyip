@@ -1,0 +1,60 @@
+name: Container Build
+
+on:
+  push:
+    branches:
+      - main
+  release:
+    types: [released]
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  docker:
+    name: Docker Build and Test
+    timeout-minutes: 20
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and Test Docker Image
+        run: |
+          echo "🔨 Building Docker image with test stage..."
+          docker build --target tester -t rustyip:test .
+          echo "✅ Docker build and test completed successfully!"
+
+      - name: Build Final Production Image
+        run: |
+          echo "🚀 Building production Docker image..."
+          docker build -t rustyip:production .
+          echo "✅ Production image built successfully!"
+
+      - name: Archive Docker Image
+        run: |
+          echo "📦 Saving Docker image to tar archive..."
+          docker save rustyip:production | gzip > rustyip-container.tar.gz
+          ls -lh rustyip-container.tar.gz
+
+      - name: Upload Image Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rustyip-container-${{ github.sha }}
+          path: rustyip-container.tar.gz
+          retention-days: 30
+          compression-level: 0  # Already compressed with gzip
+
+      - name: Upload Image Release Artifact
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "🚀 Uploading container image to release..."
+          gh release upload ${{ github.event.release.tag_name }} rustyip-container.tar.gz --clobber
