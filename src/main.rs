@@ -12,8 +12,8 @@ const HEX_CHARS: &[u8] = b"abcdef0123456789";
 const RETRY_DELAY: u64 = 30;
 
 fn random_hex(len: usize) -> String {
-    let mut rng = rand::thread_rng();
-    (0..len).map(|_| HEX_CHARS[rng.gen_range(0..HEX_CHARS.len())] as char).collect()
+    let mut rng = rand::rng();
+    (0..len).map(|_| HEX_CHARS[rng.random_range(0..HEX_CHARS.len())] as char).collect()
 }
 
 async fn retry<F, Fut, T, E>(mut f: F, delay_seconds: u64, tries: usize) -> Result<T, E>
