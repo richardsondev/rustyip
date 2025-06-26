@@ -61,8 +61,23 @@ async fn generate_payload(client: &Client, host: &str, token: &str, key: &str) -
     }))
 }
 
+#[cfg(windows)]
+fn try_enable_ecoqos() {
+    // The helper does the unsafe FFI internally and returns Result<(), Error>.
+    if let Err(err) = win32_ecoqos::thread::toggle_efficiency_mode(true) {
+        // Graceful degradation: log and move on.
+        eprintln!("EcoQoS not enabled: {err}");
+    }
+}
+
+#[cfg(not(windows))]
+fn try_enable_ecoqos() {
+    // Non-Windows build: a no-op that inlines away.
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    try_enable_ecoqos();
     let key = env::var("KEY").expect("KEY environment variable not set");
     let token = env::var("TOKEN").expect("TOKEN environment variable not set");
     let hash = env::var("HASH").expect("HASH environment variable not set");
