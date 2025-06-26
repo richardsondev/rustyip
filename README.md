@@ -1,13 +1,11 @@
-<div align="center">
-  <img src="icon/rustyip.png" alt="RustyIP Logo" width="128" height="128">
-  
-  # RustyIP client
-  
-  [![Docker Multi-Arch](https://img.shields.io/badge/docker-multi--arch-blue?logo=docker)](https://hub.docker.com/r/richardsondev/rustyip)
-  [![License](https://img.shields.io/github/license/richardsondev/rustyip)](LICENSE)
-  
-  *A dynamic DNS client with multi-architecture support*
-</div>
+# RustyIP client
+
+<img src="icon/rustyip.png" alt="RustyIP Logo" width="128" height="128" align="center" />
+
+[![Docker Multi-Arch](https://img.shields.io/badge/docker-multi--arch-blue?logo=docker)](https://hub.docker.com/r/richardsondev/rustyip)
+[![License](https://img.shields.io/github/license/richardsondev/rustyip)](LICENSE)
+
+*A dynamic DNS client with multi-architecture support*
 
 ## Container Support
 * ARM32
