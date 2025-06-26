@@ -63,8 +63,7 @@ async fn generate_payload(client: &Client, host: &str, token: &str, key: &str) -
 
 #[cfg(windows)]
 fn try_enable_ecoqos() {
-    // The helper does the unsafe FFI internally and returns Result<(), Error>.
-    if let Err(err) = win32_ecoqos::thread::toggle_efficiency_mode(true) {
+    if let Err(err) = win32_ecoqos::thread::toggle_efficiency_mode(std::process::id(), Some(true)) {
         // Graceful degradation: log and move on.
         eprintln!("EcoQoS not enabled: {err}");
     }
