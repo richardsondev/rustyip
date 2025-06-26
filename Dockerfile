@@ -58,26 +58,22 @@ RUN case "${TARGETARCH}" in \
         echo "Unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
     esac
 
-# Set up cross-compilation environment
+# Build static binary for the target architecture with maximum size optimization
 RUN RUST_TARGET=$(cat /tmp/rust_target) && \
-    case "${RUST_TARGET}" in \
-    "i686-unknown-linux-musl") \
-        echo "[target.i686-unknown-linux-musl]" >> ~/.cargo/config.toml && \
-        echo "linker = \"gcc\"" >> ~/.cargo/config.toml ;; \
-    "aarch64-unknown-linux-musl") \
-        echo "[target.aarch64-unknown-linux-musl]" >> ~/.cargo/config.toml && \
-        echo "linker = \"aarch64-linux-gnu-gcc\"" >> ~/.cargo/config.toml ;; \
-    "arm-unknown-linux-musleabi") \
-        echo "[target.arm-unknown-linux-musleabi]" >> ~/.cargo/config.toml && \
-        echo "linker = \"arm-linux-gnueabi-gcc\"" >> ~/.cargo/config.toml ;; \
-    "armv7-unknown-linux-musleabihf") \
-        echo "[target.armv7-unknown-linux-musleabihf]" >> ~/.cargo/config.toml && \
-        echo "linker = \"arm-linux-gnueabihf-gcc\"" >> ~/.cargo/config.toml ;; \
-    esac
-
-# Build static binary for the target architecture
-RUN RUST_TARGET=$(cat /tmp/rust_target) && \
-    cargo build --release --target ${RUST_TARGET}
+    echo "Building ultra-optimized binary for ${RUST_TARGET}..." && \
+    echo "Target: ${RUST_TARGET}" && \
+    echo "Platform: ${TARGETPLATFORM}" && \
+    RUSTFLAGS="-C target-cpu=generic -C strip=symbols -C panic=abort" \
+    cargo build \
+        --profile release \
+        --target ${RUST_TARGET} \
+        --features small-binary \
+        --no-default-features && \
+    echo "Build completed successfully!" && \
+    echo "Binary size:" && \
+    ls -lh ./target/${RUST_TARGET}/release/RustyIP && \
+    echo "Binary info:" && \
+    file ./target/${RUST_TARGET}/release/RustyIP || true
 
 # 2. Test Stage
 FROM builder as tester
@@ -95,8 +91,14 @@ RUN apt-get update && apt-get install -y \
 COPY test/e2e-integration.py /usr/src/RustyIP/
 COPY test/generate-test-certs.sh /usr/src/RustyIP/
 
-# Run Rust tests
-RUN cargo test --release
+# Run Rust tests with size optimizations
+RUN RUST_TARGET=$(cat /tmp/rust_target) && \
+    echo "Running tests for ${RUST_TARGET}..." && \
+    cargo test \
+        --profile release \
+        --target ${RUST_TARGET} \
+        --features small-binary \
+        --no-default-features
 
 # Run integration tests with HTTPS server
 RUN chmod +x generate-test-certs.sh&& ./generate-test-certs.sh&& python3 e2e-integration.py

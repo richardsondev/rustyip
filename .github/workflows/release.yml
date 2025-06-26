@@ -200,15 +200,35 @@ jobs:
         if: ${{ !matrix.target.nightly }}
         env:
           RUSTFLAGS: ${{ matrix.target.rustflags || '' }}
+          CARGO_PROFILE_RELEASE_STRIP: true
+          CARGO_PROFILE_RELEASE_LTO: true
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 1
+          CARGO_PROFILE_RELEASE_PANIC: abort
+          CARGO_PROFILE_RELEASE_OPT_LEVEL: z
         run: |
-          cargo build --release --target ${{ matrix.target.rustTarget }}
+          cargo build --release --target ${{ matrix.target.rustTarget }} --features small-binary --no-default-features
 
       - name: Build with nightly
         if: ${{ matrix.target.nightly || false }}
         env:
           RUSTFLAGS: ${{ matrix.target.rustflags || '' }}
+          CARGO_PROFILE_RELEASE_STRIP: true
+          CARGO_PROFILE_RELEASE_LTO: true
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 1
+          CARGO_PROFILE_RELEASE_PANIC: abort
+          CARGO_PROFILE_RELEASE_OPT_LEVEL: z
         run: |
-          cargo +nightly build -Z build-std --release --target ${{ matrix.target.rustTarget }}
+          cargo +nightly build -Z build-std --release --target ${{ matrix.target.rustTarget }} --features small-binary --no-default-features
+
+      # Post-build binary stripping for additional size reduction
+      - name: Strip Binary (Linux/macOS)
+        if: ${{ !endsWith(matrix.target.rustTarget, '-windows-gnu') }}
+        run: |
+          if command -v strip >/dev/null 2>&1; then
+            strip ./target/${{ matrix.target.rustTarget }}/release/RustyIP
+            echo "Binary stripped successfully"
+            ls -lh ./target/${{ matrix.target.rustTarget }}/release/RustyIP
+          fi
 
       - name: Upload Asset
         uses: actions/upload-artifact@v4
