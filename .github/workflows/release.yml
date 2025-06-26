@@ -9,9 +9,47 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
+  common:
+    name: Common Steps
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Validate Version
+        if: github.event_name == 'release'
+        run: |
+          VERSION=$(grep '^version' Cargo.toml | head -n 1 | cut -d '"' -f 2)
+          if [ "${{ github.event.release.tag_name }}" != "$VERSION" ]; then
+            echo "Version in Cargo.toml ($VERSION) does not match tag (${{ github.event.release.tag_name }})"
+            exit 1
+          fi
+
+      - uses: advanced-security/generate-sbom-action@v1
+        id: gensbom
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: ${{ steps.gensbom.outputs.fileName }}
+
+      - name: Upload SBOM Release Asset
+        if: github.event_name == 'release'
+        id: upload-sbom-release-asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload ${{ github.event.release.tag_name }} ${{ steps.gensbom.outputs.fileName }}#"sbom"
+
   build:
+    needs: common
     name: Build and Release
     timeout-minutes: 10
     permissions:
