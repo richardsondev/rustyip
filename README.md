@@ -1,7 +1,15 @@
-# RustyIP client
-A containerized version of a proprietary dynamic DNS client. Backend not included.
+<div align="center">
+  <img src="icon/rustyip.png" alt="RustyIP Logo" width="128" height="128">
+  
+  # RustyIP client
+  
+  [![Docker Multi-Arch](https://img.shields.io/badge/docker-multi--arch-blue?logo=docker)](https://hub.docker.com/r/richardsondev/rustyip)
+  [![License](https://img.shields.io/github/license/richardsondev/rustyip)](LICENSE)
+  
+  *A dynamic DNS client with multi-architecture support*
+</div>
 
-## Container support
+## Container Support
 * ARM32
 * ARM64
 * X64

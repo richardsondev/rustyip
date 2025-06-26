@@ -1,14 +1,50 @@
 # 1. Build Stage
 FROM rust:1.87@sha256:251cec8da4689d180f124ef00024c2f83f79d9bf984e43c180a598119e326b84 as builder
 
+# Set up build arguments for target architecture
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+ARG TARGETARCH
+
 WORKDIR /usr/src/RustyIP
 COPY . .
 
-# Add musl target for static compilation
-RUN rustup target add x86_64-unknown-linux-musl
+# Install cross-compilation dependencies and determine target
+RUN apt-get update && apt-get install -y \
+    gcc-aarch64-linux-gnu \
+    gcc-arm-linux-gnueabihf \
+    musl-tools \
+    && rm -rf /var/lib/apt/lists/*
 
-# Build static binary
-RUN cargo build --release --target x86_64-unknown-linux-musl
+# Add musl targets for static compilation based on architecture
+RUN case "${TARGETARCH}" in \
+    "amd64") \
+        rustup target add x86_64-unknown-linux-musl && \
+        echo "x86_64-unknown-linux-musl" > /tmp/rust_target ;; \
+    "arm64") \
+        rustup target add aarch64-unknown-linux-musl && \
+        echo "aarch64-unknown-linux-musl" > /tmp/rust_target ;; \
+    "arm") \
+        rustup target add armv7-unknown-linux-musleabihf && \
+        echo "armv7-unknown-linux-musleabihf" > /tmp/rust_target ;; \
+    *) \
+        echo "Unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
+    esac
+
+# Set up cross-compilation environment
+RUN RUST_TARGET=$(cat /tmp/rust_target) && \
+    case "${RUST_TARGET}" in \
+    "aarch64-unknown-linux-musl") \
+        echo "[target.aarch64-unknown-linux-musl]" >> ~/.cargo/config.toml && \
+        echo "linker = \"aarch64-linux-gnu-gcc\"" >> ~/.cargo/config.toml ;; \
+    "armv7-unknown-linux-musleabihf") \
+        echo "[target.armv7-unknown-linux-musleabihf]" >> ~/.cargo/config.toml && \
+        echo "linker = \"arm-linux-gnueabihf-gcc\"" >> ~/.cargo/config.toml ;; \
+    esac
+
+# Build static binary for the target architecture
+RUN RUST_TARGET=$(cat /tmp/rust_target) && \
+    cargo build --release --target ${RUST_TARGET}
 
 # 2. Test Stage
 FROM builder as tester
@@ -34,6 +70,12 @@ RUN chmod +x generate-test-certs.sh&& ./generate-test-certs.sh&& python3 e2e-int
 
 # 3. Distroless Stage
 FROM gcr.io/distroless/static-debian12@sha256:5c7e2b465ac6a2a4e5d4bad46165e4f6c4d3b71fe7bb267d3c73e38095cf2e65
-COPY --from=builder /usr/src/RustyIP/target/x86_64-unknown-linux-musl/release/RustyIP /usr/local/bin/RustyIP
+ARG TARGETARCH
+RUN case "${TARGETARCH}" in \
+    "amd64") echo "x86_64-unknown-linux-musl" > /tmp/rust_target ;; \
+    "arm64") echo "aarch64-unknown-linux-musl" > /tmp/rust_target ;; \
+    "arm") echo "armv7-unknown-linux-musleabihf" > /tmp/rust_target ;; \
+    esac
+COPY --from=builder /usr/src/RustyIP/target/$(cat /tmp/rust_target)/release/RustyIP /usr/local/bin/
 
 CMD ["RustyIP"]
