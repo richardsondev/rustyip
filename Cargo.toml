@@ -7,11 +7,42 @@ edition = "2024"
 rand = "0.9"
 sha2 = "0.10.9"
 hex = "0.4"
-reqwest = { version = "0.12", features = ["json"] }
+# Minimize reqwest features for smaller binary
+reqwest = { version = "0.12.20", features = ["json", "rustls-tls"], default-features = false }
 serde_json = "1.0"
-tokio = { version = "1", features = ["full"] }
+# Minimize tokio features to only what we need
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "time", "net", "macros"], default-features = false }
 pnet_datalink = "0.35.0"
-openssl = { version = "0.10.73", features = ["vendored"] }
+# Use rustls instead of OpenSSL for smaller static binaries
+openssl = { version = "0.10.73", features = ["vendored"], optional = true }
+
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1"
+
+# Optional features for conditional compilation
+[features]
+default = ["openssl-sys"]
+openssl-sys = ["dep:openssl"]
+small-binary = []
+
+# Binary size optimization profiles
+[profile.release]
+# Enable link-time optimization for smaller binaries
+lto = true
+# Use only one codegen unit for better optimization
+codegen-units = 1
+# Enable panic abort instead of unwinding (smaller code)
+panic = "abort"
+# Strip debug symbols and line tables
+strip = true
+# Optimize for size instead of speed
+opt-level = "z"
+
+[profile.release-fast]
+# Alternative profile optimized for speed over size
+inherits = "release"
+opt-level = 3
+lto = "thin"
 
 [[bin]]
 name = "RustyIP"
