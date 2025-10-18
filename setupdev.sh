@@ -23,6 +23,7 @@ apt-get install -y \
 if ! command -v rustc &>/dev/null; then
   echo "[*] Installing Rust via rustup..."
   curl https://sh.rustup.rs -sSf | sh -s -- -y
+  # shellcheck source=/dev/null
   source "$HOME/.cargo/env"
 else
   echo "[*] Rust already installed, updating..."
@@ -38,19 +39,31 @@ targets=(
   mips64-unknown-linux-gnuabi64
 )
 for t in "${targets[@]}"; do
-  rustup target add "$t" || true
+  if ! rustup target add "$t"; then
+    echo "[!] Skipping unavailable target: $t"
+  fi
 done
 
 # === Cross Compilation Toolchains ===
 echo "[*] Installing cross-compilation packages..."
-apt-get install -y \
-  gcc-aarch64-linux-gnu \
-  gcc-arm-linux-gnueabihf \
-  gcc-mips64-linux-gnuabi64 \
-  gcc-mingw-w64 \
-  gcc-multilib \
-  crossbuild-essential-arm64 \
+cross_packages=(
+  gcc-aarch64-linux-gnu
+  gcc-arm-linux-gnueabihf
+  gcc-mips64-linux-gnuabi64
+  gcc-mingw-w64
+  crossbuild-essential-arm64
   binutils-arm-linux-gnueabi
+)
+apt-get install -y "${cross_packages[@]}"
+
+optional_cross_packages=(
+  gcc-multilib
+)
+for pkg in "${optional_cross_packages[@]}"; do
+  if ! apt-get install -y "$pkg"; then
+    echo "[!] Skipping optional package due to dependency issues: $pkg"
+  fi
+done
 
 # === Optional Developer Utilities ===
 echo "[*] Installing developer tools..."
