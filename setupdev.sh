@@ -54,7 +54,11 @@ cross_packages=(
   crossbuild-essential-arm64
   binutils-arm-linux-gnueabi
 )
-apt-get install -y "${cross_packages[@]}"
+for pkg in "${cross_packages[@]}"; do
+  if ! apt-get install -y "$pkg"; then
+    echo "[!] Skipping cross package due to dependency issues: $pkg"
+  fi
+done
 
 optional_cross_packages=(
   gcc-multilib
