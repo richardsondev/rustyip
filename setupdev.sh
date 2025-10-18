@@ -60,14 +60,8 @@ for pkg in "${cross_packages[@]}"; do
   fi
 done
 
-optional_cross_packages=(
-  gcc-multilib
-)
-for pkg in "${optional_cross_packages[@]}"; do
-  if ! apt-get install -y "$pkg"; then
-    echo "[!] Skipping optional package due to dependency issues: $pkg"
-  fi
-done
+# 32-bit x86 toolchain without multilib (avoids conflicts)
+apt-get install -y gcc-i686-linux-gnu g++-i686-linux-gnu
 
 # === Optional Developer Utilities ===
 echo "[*] Installing developer tools..."
