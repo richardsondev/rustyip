@@ -1,83 +1,68 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+export DEBIAN_FRONTEND=noninteractive
+
 # === System Setup ===
 echo "[*] Updating system packages..."
 apt-get update -y
 apt-get upgrade -y
 
 echo "[*] Installing base build tools..."
-apt-get install -y \
+apt-get install -y --no-install-recommends \
   build-essential \
   pkg-config \
   libssl-dev \
+  zlib1g-dev \
+  ca-certificates \
   curl \
   git \
   clang \
   cmake \
   python3 \
   python3-pip \
-  jq
+  jq \
+  lld
 
-# === Rust Setup ===
-if ! command -v rustc &>/dev/null; then
+# === Rust Setup (x86_64-unknown-linux-gnu only) ===
+if ! command -v rustup >/dev/null 2>&1; then
   echo "[*] Installing Rust via rustup..."
-  curl https://sh.rustup.rs -sSf | sh -s -- -y
+  curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal
   # shellcheck source=/dev/null
   source "$HOME/.cargo/env"
 else
-  echo "[*] Rust already installed, updating..."
-  rustup update
+  echo "[*] rustup present; updating..."
+  rustup self update || true
 fi
 
-echo "[*] Adding common Rust targets..."
-targets=(
-  i686-unknown-linux-gnu
-  x86_64-unknown-linux-gnu
-  aarch64-unknown-linux-gnu
-  armv7-unknown-linux-gnueabihf
-  mips64-unknown-linux-gnuabi64
-)
-for t in "${targets[@]}"; do
-  if ! rustup target add "$t"; then
-    echo "[!] Skipping unavailable target: $t"
+echo "[*] Configuring Rust toolchain..."
+rustup toolchain install stable --profile minimal
+rustup default stable
+rustup target add x86_64-unknown-linux-gnu || true
+
+# Remove any other installed Rust targets to keep env x64-only
+mapfile -t INSTALLED < <(rustup target list --installed || true)
+for t in "${INSTALLED[@]}"; do
+  if [[ "$t" != "x86_64-unknown-linux-gnu" ]]; then
+    rustup target remove "$t" || true
   fi
 done
 
-# === Cross Compilation Toolchains ===
-echo "[*] Installing cross-compilation packages..."
-cross_packages=(
-  gcc-aarch64-linux-gnu
-  gcc-arm-linux-gnueabihf
-  gcc-mips64-linux-gnuabi64
-  gcc-mingw-w64
-  crossbuild-essential-arm64
-  binutils-arm-linux-gnueabi
-)
-for pkg in "${cross_packages[@]}"; do
-  if ! apt-get install -y "$pkg"; then
-    echo "[!] Skipping cross package due to dependency issues: $pkg"
-  fi
-done
-
-# 32-bit x86 toolchain without multilib (avoids conflicts)
-apt-get install -y gcc-i686-linux-gnu g++-i686-linux-gnu
-
-# === Optional Developer Utilities ===
-echo "[*] Installing developer tools..."
-apt-get install -y \
-  ripgrep \
-  fd-find \
-  lld \
-  llvm \
-  vim \
-  tree
+# Optional: prefer lld; default linker is cc
+mkdir -p "$HOME/.cargo"
+cat > "$HOME/.cargo/config.toml" <<'EOI'
+[target.x86_64-unknown-linux-gnu]
+linker = "cc"
+# To use lld, uncomment the next line:
+# rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+EOI
 
 # === Verification ===
 echo "[*] Verifying installation..."
+source "$HOME/.cargo/env"
 rustc --version
 cargo --version
-echo "[*] Rust targets:"
+echo "[*] Rust targets installed:"
 rustup target list --installed
 
 echo "[✓] Environment setup complete."
