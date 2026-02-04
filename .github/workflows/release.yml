@@ -35,7 +35,7 @@ jobs:
       - uses: advanced-security/generate-sbom-action@v1
         id: gensbom
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         with:
           name: sbom
           path: ${{ steps.gensbom.outputs.fileName }}
@@ -143,7 +143,7 @@ jobs:
           fetch-depth: 1
 
       - name: Cache cargo dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/bin/
@@ -211,7 +211,7 @@ jobs:
           cargo +nightly build -Z build-std --release --target ${{ matrix.target.rustTarget }}
 
       - name: Upload Asset
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: RustyIP-${{ matrix.target.rustTarget }}${{ matrix.target.displaySubName != '' && format('-{0}', matrix.target.displaySubName) || '' }}${{ endsWith(matrix.target.rustTarget, '-windows-gnu') && '.exe' || '' }}
           path: ./target/${{ matrix.target.rustTarget }}/release/RustyIP${{ endsWith(matrix.target.rustTarget, '-windows-gnu') && '.exe' || '' }}
