@@ -1,4 +1,4 @@
-use rand::Rng;
+use rand::RngExt;
 use sha2::{Sha512, Digest};
 use reqwest::{Client, Url};
 use std::env;
@@ -52,7 +52,10 @@ async fn generate_payload(client: &Client, host: &str, token: &str, key: &str) -
     let (salta, saltb) = (random_hex(16), random_hex(16));
     let wanip = get_ip(&client, host).await?;
     let wandata_str = format!("{}{}{}{}{}", salta, token, wanip, saltb, key);
-    let hex_string = format!("{:x}", Sha512::digest(wandata_str.as_bytes()));
+    let hex_string: String = Sha512::digest(wandata_str.as_bytes())
+        .iter()
+        .map(|b| format!("{:02x}", b))
+        .collect();
 
     Ok(serde_json::json!({
         "status": "success",
