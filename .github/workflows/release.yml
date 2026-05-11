@@ -236,9 +236,9 @@ jobs:
       - name: Build .deb package
         if: ${{ github.event_name == 'release' && matrix.target.debArch != '' }}
         run: |
-          mkdir -p dpkg/DEBIAN dpkg/usr/local/bin
-          cp ./target/${{ matrix.target.rustTarget }}/release/RustyIP dpkg/usr/local/bin/
-          chmod 755 dpkg/usr/local/bin/RustyIP
+          mkdir -p dpkg/DEBIAN dpkg/usr/bin
+          cp ./target/${{ matrix.target.rustTarget }}/release/RustyIP dpkg/usr/bin/
+          chmod 755 dpkg/usr/bin/RustyIP
           VERSION="${{ github.ref_name }}"
           VERSION="${VERSION#v}"
           cat > dpkg/DEBIAN/control << EOF
@@ -258,4 +258,4 @@ jobs:
         run: |
           VERSION="${{ github.ref_name }}"
           VERSION="${VERSION#v}"
-          gh release upload ${{ github.event.release.tag_name }} ./RustyIP_${VERSION}_${{ matrix.target.debArch }}.deb
+          gh release upload ${{ github.event.release.tag_name }} --clobber ./RustyIP_${VERSION}_${{ matrix.target.debArch }}.deb
