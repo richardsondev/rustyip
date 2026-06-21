@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="icon/rustyip.png" alt="RustyIP icon" width="128" />
+</p>
+
 # RustyIP client
 A containerized version of a proprietary dynamic DNS client. Backend not included.
 
