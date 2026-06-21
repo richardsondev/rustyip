@@ -9,12 +9,15 @@ sha2 = "0.11.0"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde_json = "1.0"
 tokio = { version = "1", features = ["full"] }
-hmac = "0.12"
 
 [[bin]]
 name = "RustyIP"
 path = "src/main.rs"
 
 [features]
-default = ["embed-config"]
+default = []
+# embed-config: when enabled, includes the 8192-byte buffer for embedding
+# JSON config (injected at download time by web portal) and enables runtime
+# fallback from env vars. Default OFF to avoid leaving buffer space in
+# normal builds.
 embed-config = []
