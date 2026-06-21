@@ -37,10 +37,17 @@ jobs:
       - uses: advanced-security/generate-sbom-action@v1
         id: gensbom
 
+      - name: Stage SBOM into dist
+        id: stagesbom
+        run: |
+          mkdir -p dist
+          cp "${{ steps.gensbom.outputs.fileName }}" dist/
+          echo "name=$(basename "${{ steps.gensbom.outputs.fileName }}")" >> "$GITHUB_OUTPUT"
+
       - uses: actions/upload-artifact@v7
         with:
           name: sbom
-          path: ${{ steps.gensbom.outputs.fileName }}
+          path: dist/${{ steps.stagesbom.outputs.name }}
 
       - name: Upload SBOM Release Asset
         if: github.event_name == 'release'
@@ -203,26 +210,19 @@ jobs:
         if: ${{ contains(matrix.target.rustTarget, 'i686-unknown-linux-gnu') }}
         run: sudo apt install -y gcc-multilib
 
-      # Build time
+      # Build time — build.sh places the arch-named binary in dist/.
       - name: Build
-        if: ${{ !matrix.target.nightly }}
         env:
           RUSTFLAGS: ${{ matrix.target.rustflags || '' }}
+          NIGHTLY: ${{ matrix.target.nightly && '1' || '' }}
         run: |
-          cargo build --release --target ${{ matrix.target.rustTarget }}
-
-      - name: Build with nightly
-        if: ${{ matrix.target.nightly || false }}
-        env:
-          RUSTFLAGS: ${{ matrix.target.rustflags || '' }}
-        run: |
-          cargo +nightly build -Z build-std --release --target ${{ matrix.target.rustTarget }}
+          bash build.sh "${{ matrix.target.rustTarget }}" "${{ matrix.target.displaySubName }}"
 
       - name: Upload Asset
         uses: actions/upload-artifact@v7
         with:
           name: RustyIP-${{ matrix.target.rustTarget }}${{ matrix.target.displaySubName != '' && format('-{0}', matrix.target.displaySubName) || '' }}${{ endsWith(matrix.target.rustTarget, '-windows-gnu') && '.exe' || '' }}
-          path: ./target/${{ matrix.target.rustTarget }}/release/RustyIP${{ endsWith(matrix.target.rustTarget, '-windows-gnu') && '.exe' || '' }}
+          path: ./dist/RustyIP-${{ matrix.target.rustTarget }}${{ matrix.target.displaySubName != '' && format('-{0}', matrix.target.displaySubName) || '' }}${{ endsWith(matrix.target.rustTarget, '-windows-gnu') && '.exe' || '' }}
 
       - name: Upload Release Asset
         if: github.event_name == 'release'
@@ -230,14 +230,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp ./target/${{ matrix.target.rustTarget }}/release/RustyIP${{ endsWith(matrix.target.rustTarget, '-windows-gnu') && '.exe' || '' }} ./RustyIP-${{ github.ref_name }}-${{ matrix.target.rustTarget }}${{ endsWith(matrix.target.rustTarget, '-windows-gnu') && '.exe' || '' }} &&
-          gh release upload ${{ github.event.release.tag_name }} ./RustyIP-${{ github.ref_name }}-${{ matrix.target.rustTarget }}${{ endsWith(matrix.target.rustTarget, '-windows-gnu') && '.exe' || '' }}#"RustyIP-${{ github.ref_name }}-${{ matrix.target.rustTarget }}${{ endsWith(matrix.target.rustTarget, '-windows-gnu') && '.exe' || '' }} (${{ matrix.target.displayName }})"
+          EXT="${{ endsWith(matrix.target.rustTarget, '-windows-gnu') && '.exe' || '' }}"
+          ARTIFACT="dist/RustyIP-${{ matrix.target.rustTarget }}${{ matrix.target.displaySubName != '' && format('-{0}', matrix.target.displaySubName) || '' }}${EXT}"
+          ASSET="RustyIP-${{ github.ref_name }}-${{ matrix.target.rustTarget }}${{ matrix.target.displaySubName != '' && format('-{0}', matrix.target.displaySubName) || '' }}${EXT}"
+          cp "$ARTIFACT" "dist/$ASSET"
+          gh release upload ${{ github.event.release.tag_name }} "dist/$ASSET#$ASSET (${{ matrix.target.displayName }})"
 
       - name: Build .deb package
         if: ${{ github.event_name == 'release' && matrix.target.debArch != '' }}
         run: |
-          mkdir -p dpkg/DEBIAN dpkg/usr/bin
-          cp ./target/${{ matrix.target.rustTarget }}/release/RustyIP dpkg/usr/bin/
+          mkdir -p dpkg/DEBIAN dpkg/usr/bin dist
+          cp ./dist/RustyIP-${{ matrix.target.rustTarget }}${{ matrix.target.displaySubName != '' && format('-{0}', matrix.target.displaySubName) || '' }} dpkg/usr/bin/RustyIP
           chmod 755 dpkg/usr/bin/RustyIP
           VERSION="${{ github.ref_name }}"
           VERSION="${VERSION#v}"
@@ -249,7 +252,7 @@ jobs:
           Description: IP address lookup tool
           EOF
           sed -i 's/^          //' dpkg/DEBIAN/control
-          dpkg-deb --build dpkg RustyIP_${VERSION}_${{ matrix.target.debArch }}.deb
+          dpkg-deb --build dpkg dist/RustyIP_${VERSION}_${{ matrix.target.debArch }}.deb
 
       - name: Upload .deb Release Asset
         if: ${{ github.event_name == 'release' && matrix.target.debArch != '' }}
@@ -258,4 +261,4 @@ jobs:
         run: |
           VERSION="${{ github.ref_name }}"
           VERSION="${VERSION#v}"
-          gh release upload ${{ github.event.release.tag_name }} --clobber ./RustyIP_${VERSION}_${{ matrix.target.debArch }}.deb
+          gh release upload ${{ github.event.release.tag_name }} --clobber ./dist/RustyIP_${VERSION}_${{ matrix.target.debArch }}.deb
