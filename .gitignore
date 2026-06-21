@@ -12,3 +12,9 @@ target/
 # Research, internal plans, proposals and generated docs (never publish)
 research/
 
+# Release/packaging output
+dist/
+
+# Local scratch architecture diagram
+temp_arch.mmd
+
