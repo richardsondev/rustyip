@@ -1,5 +1,6 @@
 use rand::RngExt;
-use sha2::{Digest, Sha512};
+use hmac::{Hmac, KeyInit, Mac};
+use sha2::Sha512;
 use reqwest::{Client, Url};
 use std::env;
 use std::net::Ipv4Addr;
@@ -8,40 +9,98 @@ use tokio::time::sleep;
 use serde_json::Value;
 use std::future::Future;
 
+type HmacSha512 = Hmac<Sha512>;
+
 const HEX_CHARS: &[u8] = b"abcdef0123456789";
 const RETRY_DELAY: u64 = 30;
 
+/// Embedded configuration support.
+///
+/// When the `embed-config` feature is enabled, the binary reserves a region
+/// that a download-time "injector" service can patch with a minified JSON
+/// object, providing a fallback for any configuration value not supplied via
+/// environment variables.
+///
+/// Layout: a fixed 16-byte `MAGIC` marker followed by `CONFIG_CAPACITY` bytes of
+/// payload space. The injector locates the marker in the on-disk binary and
+/// writes minified JSON immediately after it, terminated by a single NUL byte,
+/// e.g. `{"KEY":"..","TOKEN":"..","HOST":"..","HASH":"..","SLEEP_DURATION":".."}`.
+///
+/// Security note: any values injected here (KEY/TOKEN/HASH) are stored in the
+/// binary in plaintext and can be recovered by anyone who obtains it. Treat a
+/// patched binary as secret material.
 #[cfg(feature = "embed-config")]
-const EMBEDDED_CONFIG_SIZE: usize = 8192;
+mod embedded {
+    use std::sync::OnceLock;
 
-/// Large zeroed buffer (8 KiB) reserved so that a web portal can inject a JSON
-/// configuration blob at download time by overwriting this region in the
-/// compiled binary.
-///
-/// When the `embed-config` feature is enabled, the runtime will try to parse
-/// a JSON object from the start of this buffer (null-terminated) as a fallback
-/// for missing environment variables.
-///
-/// The buffer is only present when the feature is enabled. By default the
-/// feature is off to avoid including unnecessary space in the binary.
-///
-/// The portal patcher should locate this region (e.g. via symbol, section, or
-/// by searching for a large run of zero bytes near the binary's data sections)
-/// and write a minified JSON like:
-///   {"KEY":"...","TOKEN":"...","HOST":"...","HASH":"...","SLEEP_DURATION":"..."} 
-/// followed by a null byte.
-#[cfg(feature = "embed-config")]
-#[used]
-static EMBEDDED_CONFIG: [u8; EMBEDDED_CONFIG_SIZE] = [0; EMBEDDED_CONFIG_SIZE];
+    /// Marker the injector searches for. Must stay free of NUL bytes.
+    pub const MAGIC: [u8; 16] = *b"<RUSTYIP-CFGv1>\n";
+    /// Bytes reserved for the injected JSON payload (after the marker).
+    pub const CONFIG_CAPACITY: usize = 8192;
+    const SIZE: usize = MAGIC.len() + CONFIG_CAPACITY;
 
-#[cfg(feature = "embed-config")]
-fn load_embedded_config() -> Option<serde_json::Value> {
-    let end = EMBEDDED_CONFIG.iter().position(|&b| b == 0).unwrap_or(EMBEDDED_CONFIG.len());
-    if end == 0 {
-        return None;
+    /// Builds a fully non-zero initializer.
+    ///
+    /// An all-zero `static` would be placed in `.bss` (or the un-stored zero
+    /// tail of `.data`) and would therefore NOT exist in the on-disk binary for
+    /// the injector to overwrite. Initializing every byte to a non-zero value
+    /// forces the whole region into a file-backed data section.
+    const fn init() -> [u8; SIZE] {
+        let mut buf = [0xFFu8; SIZE];
+        let mut i = 0;
+        while i < MAGIC.len() {
+            buf[i] = MAGIC[i];
+            i += 1;
+        }
+        buf
     }
-    let s = std::str::from_utf8(&EMBEDDED_CONFIG[..end]).ok()?;
-    serde_json::from_str(s.trim()).ok()
+
+    /// Reserved, file-backed region. `#[used]` keeps the symbol even if the
+    /// optimizer would otherwise consider it dead.
+    #[used]
+    static BUFFER: [u8; SIZE] = init();
+
+    /// Reads the raw payload injected after the marker, if present.
+    ///
+    /// Bytes are read with `std::ptr::read_volatile` so the optimizer cannot
+    /// constant-fold the (post-compilation patched) contents of this otherwise
+    /// immutable static.
+    fn read_raw() -> Option<String> {
+        let base = BUFFER.as_ptr();
+        let mut i = 0;
+        while i < MAGIC.len() {
+            // SAFETY: `i < SIZE`; the volatile read defeats constant-folding of
+            // the externally patched static.
+            let b = unsafe { std::ptr::read_volatile(base.add(i)) };
+            if b != MAGIC[i] {
+                return None;
+            }
+            i += 1;
+        }
+        let mut payload = Vec::new();
+        let mut j = MAGIC.len();
+        while j < SIZE {
+            // SAFETY: `j < SIZE`.
+            let b = unsafe { std::ptr::read_volatile(base.add(j)) };
+            if b == 0 {
+                break;
+            }
+            payload.push(b);
+            j += 1;
+        }
+        if payload.is_empty() {
+            return None;
+        }
+        String::from_utf8(payload).ok()
+    }
+
+    /// Returns the parsed embedded config, parsing at most once.
+    pub fn config() -> Option<&'static serde_json::Value> {
+        static CACHE: OnceLock<Option<serde_json::Value>> = OnceLock::new();
+        CACHE
+            .get_or_init(|| read_raw().and_then(|s| serde_json::from_str(s.trim()).ok()))
+            .as_ref()
+    }
 }
 
 fn get_config(name: &str) -> Option<String> {
@@ -50,14 +109,11 @@ fn get_config(name: &str) -> Option<String> {
     }
     #[cfg(feature = "embed-config")]
     {
-        if let Some(config) = load_embedded_config() {
-            if let Some(v) = config.get(name).and_then(|val| val.as_str()) {
-                return Some(v.to_string());
-            } else {
-                eprintln!("No embedded entry found for {}", name);
-            }
-        } else {
-            eprintln!("No embedded entry found for {}", name);
+        if let Some(v) = embedded::config()
+            .and_then(|cfg| cfg.get(name))
+            .and_then(|val| val.as_str())
+        {
+            return Some(v.to_string());
         }
     }
     None
@@ -65,8 +121,9 @@ fn get_config(name: &str) -> Option<String> {
 
 /// Gets a required configuration value.
 ///
-/// Tries environment variable first. If the feature is enabled, falls back to
-/// the embedded JSON config. If still missing, returns an error.
+/// Tries the environment variable first. If the `embed-config` feature is
+/// enabled, falls back to the embedded JSON config. Returns an error if neither
+/// provides a value.
 fn get_required_config(name: &str) -> Result<String, Box<dyn std::error::Error>> {
     if let Some(v) = get_config(name) {
         return Ok(v);
@@ -84,6 +141,9 @@ where
     F: FnMut() -> Fut,
     Fut: Future<Output = Result<T, E>>,
 {
+    // Always attempt at least once so the final `expect` below is unreachable.
+    let max_tries = max_tries.max(1);
+    const MAX_DELAY_SECONDS: u64 = 600;
     let mut delay = initial_delay_seconds;
     let mut last_err: Option<E> = None;
 
@@ -94,14 +154,14 @@ where
                 last_err = Some(e);
                 if attempt + 1 < max_tries {
                     sleep(Duration::from_secs(delay)).await;
-                    delay *= 2;
+                    delay = delay.saturating_mul(2).min(MAX_DELAY_SECONDS);
                 }
             }
         }
     }
 
-    // Return the last error after exhausting retries
-    Err(last_err.expect("retry loop should have at least one error"))
+    // Return the last error after exhausting retries.
+    Err(last_err.expect("retry runs at least once, so an error is always present"))
 }
 
 async fn get_ip(client: &Client, host: &str) -> Result<String, Box<dyn std::error::Error>> {
@@ -122,6 +182,9 @@ async fn generate_payload(client: &Client, host: &str, token: &str, key: &str) -
     let (salta, saltb) = (random_hex(16), random_hex(16));
     let wanip = get_ip(client, host).await?;
     let wandata_str = format!("{}{}{}{}{}", salta, token, wanip, saltb, key);
+    // NOTE: this preimage and the use of `key` as the HMAC key must match the
+    // server's verification exactly. Do not change without coordinating the
+    // server side.
     let hash = hmac_sha512(key.as_bytes(), wandata_str.as_bytes());
     let hex_string: String = hash.iter().map(|b| format!("{:02x}", b)).collect();
 
@@ -133,29 +196,10 @@ async fn generate_payload(client: &Client, host: &str, token: &str, key: &str) -
 }
 
 fn hmac_sha512(key: &[u8], data: &[u8]) -> [u8; 64] {
-    let mut k = [0u8; 128];
-    if key.len() > 128 {
-        let mut hasher = Sha512::new();
-        hasher.update(key);
-        let h = hasher.finalize();
-        k[..64].copy_from_slice(&h);
-    } else {
-        k[..key.len()].copy_from_slice(key);
-    }
-    let mut ipad = [0x36u8; 128];
-    let mut opad = [0x5cu8; 128];
-    for i in 0..128 {
-        ipad[i] ^= k[i];
-        opad[i] ^= k[i];
-    }
-    let mut hasher = Sha512::new();
-    hasher.update(ipad);
-    hasher.update(data);
-    let inner = hasher.finalize();
-    let mut hasher = Sha512::new();
-    hasher.update(opad);
-    hasher.update(inner);
-    hasher.finalize().into()
+    // HMAC accepts a key of any length, so `new_from_slice` never errors here.
+    let mut mac = HmacSha512::new_from_slice(key).expect("HMAC accepts keys of any length");
+    mac.update(data);
+    mac.finalize().into_bytes().into()
 }
 
 #[tokio::main]
@@ -223,21 +267,28 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "embed-config")]
-    fn test_load_embedded_config() {
-        // With the embed-config feature enabled, the buffer starts as zeros (or
-        // will be overwritten by the portal at download time). Expect no valid
-        // JSON here in the test binary.
-        if let Some(cfg) = load_embedded_config() {
-            assert!(cfg.as_object().map_or(true, |o| o.is_empty()));
-        }
+    fn test_hmac_sha512_rfc4231_vector() {
+        // RFC 4231 test case 2 for HMAC-SHA-512 (key "Jefe").
+        let mac = hmac_sha512(b"Jefe", b"what do ya want for nothing?");
+        let hex: String = mac.iter().map(|b| format!("{:02x}", b)).collect();
+        assert_eq!(
+            hex,
+            "164b7a7bfcf819e2e395fbe73b56e0a387bd64222e831fd610270cd7ea2505549758bf75c05a994a6d034f65f8f0e6fdcaeab1a34d4a6b4b636e070a38bce737"
+        );
     }
 
     #[test]
     #[cfg(feature = "embed-config")]
-    fn test_embedded_buffer_size() {
-        // Ensures the reserved buffer has the expected capacity when the
-        // feature is enabled.
-        assert_eq!(EMBEDDED_CONFIG.len(), 8192);
+    fn test_embedded_config_unpatched_is_none() {
+        // The unpatched buffer holds the marker plus non-zero filler (no JSON),
+        // so it must parse to None in the test binary.
+        assert!(embedded::config().is_none());
+    }
+
+    #[test]
+    #[cfg(feature = "embed-config")]
+    fn test_embedded_capacity() {
+        // Ensures the reserved payload capacity matches the documented size.
+        assert_eq!(embedded::CONFIG_CAPACITY, 8192);
     }
 }
