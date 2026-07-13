@@ -20,19 +20,32 @@ jobs:
     permissions:
       contents: write
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve_version.outputs.version }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v7
         with:
           fetch-depth: 1
-      - name: Validate Version
+      - name: Resolve version from release tag
+        id: resolve_version
         if: github.event_name == 'release'
         run: |
-          VERSION=$(grep '^version' Cargo.toml | head -n 1 | cut -d '"' -f 2)
-          if [ "${{ github.event.release.tag_name }}" != "$VERSION" ]; then
-            echo "Version in Cargo.toml ($VERSION) does not match tag (${{ github.event.release.tag_name }})"
+          TAG="${{ github.event.release.tag_name }}"
+          # The tag is the source of truth for the version. Normalize an
+          # optional leading "v" so both "1.6.0" and "v1.6.0" are accepted.
+          VERSION="${TAG#v}"
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+.].*)?$'; then
+            echo "::error::Release tag '$TAG' is not a valid version (expected X.Y.Z or vX.Y.Z)"
             exit 1
           fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved release version: $VERSION (from tag $TAG)"
+      - name: Stamp Cargo.toml with release version
+        if: github.event_name == 'release'
+        run: |
+          sed -i "s/^version = \".*\"/version = \"${{ steps.resolve_version.outputs.version }}\"/" Cargo.toml
+          grep '^version = ' Cargo.toml
 
       - uses: advanced-security/generate-sbom-action@v1
         id: gensbom
@@ -210,6 +223,14 @@ jobs:
         if: ${{ contains(matrix.target.rustTarget, 'i686-unknown-linux-gnu') }}
         run: sudo apt install -y gcc-multilib
 
+      # On release, the tag drives the version: stamp Cargo.toml before building
+      # so the compiled binary's version metadata (e.g. Windows resources) match.
+      - name: Stamp Cargo.toml with release version
+        if: github.event_name == 'release'
+        run: |
+          sed -i "s/^version = \".*\"/version = \"${{ needs.common.outputs.version }}\"/" Cargo.toml
+          grep '^version = ' Cargo.toml
+
       # Build time — build.sh places the arch-named binary in dist/.
       - name: Build
         env:
@@ -232,7 +253,7 @@ jobs:
         run: |
           EXT="${{ endsWith(matrix.target.rustTarget, '-windows-gnu') && '.exe' || '' }}"
           ARTIFACT="dist/RustyIP-${{ matrix.target.rustTarget }}${{ matrix.target.displaySubName != '' && format('-{0}', matrix.target.displaySubName) || '' }}${EXT}"
-          ASSET="RustyIP-${{ github.ref_name }}-${{ matrix.target.rustTarget }}${{ matrix.target.displaySubName != '' && format('-{0}', matrix.target.displaySubName) || '' }}${EXT}"
+          ASSET="RustyIP-${{ needs.common.outputs.version }}-${{ matrix.target.rustTarget }}${{ matrix.target.displaySubName != '' && format('-{0}', matrix.target.displaySubName) || '' }}${EXT}"
           cp "$ARTIFACT" "dist/$ASSET"
           gh release upload ${{ github.event.release.tag_name }} "dist/$ASSET#$ASSET (${{ matrix.target.displayName }})"
 
@@ -242,8 +263,7 @@ jobs:
           mkdir -p dpkg/DEBIAN dpkg/usr/bin dist
           cp ./dist/RustyIP-${{ matrix.target.rustTarget }}${{ matrix.target.displaySubName != '' && format('-{0}', matrix.target.displaySubName) || '' }} dpkg/usr/bin/RustyIP
           chmod 755 dpkg/usr/bin/RustyIP
-          VERSION="${{ github.ref_name }}"
-          VERSION="${VERSION#v}"
+          VERSION="${{ needs.common.outputs.version }}"
           cat > dpkg/DEBIAN/control << EOF
           Package: RustyIP
           Version: $VERSION
@@ -259,6 +279,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          VERSION="${{ github.ref_name }}"
-          VERSION="${VERSION#v}"
+          VERSION="${{ needs.common.outputs.version }}"
           gh release upload ${{ github.event.release.tag_name }} --clobber ./dist/RustyIP_${VERSION}_${{ matrix.target.debArch }}.deb
