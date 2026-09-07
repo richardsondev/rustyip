@@ -1,5 +1,5 @@
 # 1. Build Stage
-FROM rust:1.97 as builder
+FROM rust:1.98 as builder
 
 WORKDIR /usr/src/RustyIP
 COPY . .
