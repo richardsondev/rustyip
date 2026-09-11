@@ -1,41 +1,35 @@
 use rand::RngExt;
-use hmac::{Hmac, KeyInit, Mac};
-use sha2::Sha512;
+use base64::Engine;
+use base64::engine::general_purpose::{STANDARD as B64, URL_SAFE_NO_PAD as B64URL};
+use ed25519_dalek::{Signer, SigningKey};
 use reqwest::{Client, Url};
 use std::env;
 use std::net::Ipv4Addr;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::time::sleep;
-use serde_json::Value;
 use std::future::Future;
-
-type HmacSha512 = Hmac<Sha512>;
 
 const HEX_CHARS: &[u8] = b"abcdef0123456789";
 const RETRY_DELAY: u64 = 30;
+/// Domain-separation string bound into every token as `iss`/`aud`.
+const TOKEN_AUD: &str = "rustyip-ddns/v2";
+/// Token freshness window in seconds; the backend enforces the same bound.
+const TOKEN_TTL_SECS: u64 = 120;
 
-/// Embedded configuration support.
+/// Optional compiled-in configuration.
 ///
-/// When the `embed-config` feature is enabled, the binary reserves a region
-/// that a download-time "injector" service can patch with a minified JSON
-/// object, providing a fallback for any configuration value not supplied via
-/// environment variables.
-///
-/// Layout: a fixed 16-byte `MAGIC` marker followed by `CONFIG_CAPACITY` bytes of
-/// payload space. The injector locates the marker in the on-disk binary and
-/// writes minified JSON immediately after it, terminated by a single NUL byte,
-/// e.g. `{"KEY":"..","TOKEN":"..","HOST":"..","HASH":"..","SLEEP_DURATION":".."}`.
-///
-/// Security note: any values injected here (KEY/TOKEN/HASH) are stored in the
-/// binary in plaintext and can be recovered by anyone who obtains it. Treat a
-/// patched binary as secret material.
+/// Reserves a fixed, file-backed region — a 16-byte `MAGIC` marker followed by
+/// `CONFIG_CAPACITY` payload bytes — that may hold a minified JSON object of
+/// configuration values written into the region after build, terminated by a
+/// single NUL byte, e.g. `{"HOST":"..","HASH":"..","KEY":".."}`. Values found
+/// here take precedence over the corresponding environment variables.
 #[cfg(feature = "embed-config")]
 mod embedded {
     use std::sync::OnceLock;
 
-    /// Marker the injector searches for. Must stay free of NUL bytes.
+    /// Marker delimiting the start of the region. Must stay free of NUL bytes.
     pub const MAGIC: [u8; 16] = *b"<RUSTYIP-CFGv1>\n";
-    /// Bytes reserved for the injected JSON payload (after the marker).
+    /// Bytes reserved for the JSON payload (after the marker).
     pub const CONFIG_CAPACITY: usize = 8192;
     const SIZE: usize = MAGIC.len() + CONFIG_CAPACITY;
 
@@ -104,9 +98,8 @@ mod embedded {
 }
 
 fn get_config(name: &str) -> Option<String> {
-    if let Ok(v) = env::var(name) {
-        return Some(v);
-    }
+    // A compiled-in value, when present, takes precedence; otherwise fall back
+    // to the environment variable of the same name.
     #[cfg(feature = "embed-config")]
     {
         if let Some(v) = embedded::config()
@@ -116,14 +109,14 @@ fn get_config(name: &str) -> Option<String> {
             return Some(v.to_string());
         }
     }
+    if let Ok(v) = env::var(name) {
+        return Some(v);
+    }
     None
 }
 
-/// Gets a required configuration value.
-///
-/// Tries the environment variable first. If the `embed-config` feature is
-/// enabled, falls back to the embedded JSON config. Returns an error if neither
-/// provides a value.
+/// Gets a required configuration value, or returns an error if it is set by
+/// neither a compiled-in value nor an environment variable.
 fn get_required_config(name: &str) -> Result<String, Box<dyn std::error::Error>> {
     if let Some(v) = get_config(name) {
         return Ok(v);
@@ -178,37 +171,74 @@ async fn get_ip(client: &Client, host: &str) -> Result<String, Box<dyn std::erro
     retry(fetch_ip, RETRY_DELAY, 5).await
 }
 
-async fn generate_payload(client: &Client, host: &str, token: &str, key: &str) -> Result<Value, Box<dyn std::error::Error>> {
-    let (salta, saltb) = (random_hex(16), random_hex(16));
-    let wanip = get_ip(client, host).await?;
-    let wandata_str = format!("{}{}{}{}{}", salta, token, wanip, saltb, key);
-    // NOTE: this preimage and the use of `key` as the HMAC key must match the
-    // server's verification exactly. Do not change without coordinating the
-    // server side.
-    let hash = hmac_sha512(key.as_bytes(), wandata_str.as_bytes());
-    let hex_string: String = hash.iter().map(|b| format!("{:02x}", b)).collect();
-
-    Ok(serde_json::json!({
-        "status": "success",
-        "data": hex_string,
-        "additional": format!("{}{}", salta, saltb)
-    }))
+fn now_unix() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
-fn hmac_sha512(key: &[u8], data: &[u8]) -> [u8; 64] {
-    // HMAC accepts a key of any length, so `new_from_slice` never errors here.
-    let mut mac = HmacSha512::new_from_slice(key).expect("HMAC accepts keys of any length");
-    mac.update(data);
-    mac.finalize().into_bytes().into()
+/// Parses a base64 (standard or URL-safe) 32-byte Ed25519 private seed.
+fn parse_signing_key(key_b64: &str) -> Result<SigningKey, Box<dyn std::error::Error>> {
+    let key_b64 = key_b64.trim();
+    let raw = B64
+        .decode(key_b64)
+        .or_else(|_| B64URL.decode(key_b64))
+        .map_err(|_| "KEY must be base64-encoded")?;
+    let seed: [u8; 32] = raw
+        .as_slice()
+        .try_into()
+        .map_err(|_| "KEY must decode to exactly 32 bytes (an Ed25519 private seed)")?;
+    Ok(SigningKey::from_bytes(&seed))
+}
+
+fn b64url_json(value: &serde_json::Value) -> String {
+    B64URL.encode(value.to_string().as_bytes())
+}
+
+/// Builds a compact EdDSA-signed JWT asserting the current WAN IP for `account`.
+///
+/// Freshness is carried by `iat`/`exp` and replay is deterred by a random
+/// `jti`; the backend verifies the signature with the matching public key.
+fn build_token(signing_key: &SigningKey, kid: &str, account: &str, wanip: &str) -> String {
+    let now = now_unix();
+    let header = serde_json::json!({ "alg": "EdDSA", "typ": "JWT", "kid": kid });
+    let claims = serde_json::json!({
+        "iss": TOKEN_AUD,
+        "aud": TOKEN_AUD,
+        "sub": account,
+        "ip": wanip,
+        "iat": now,
+        "exp": now + TOKEN_TTL_SECS,
+        "jti": random_hex(32),
+    });
+    let signing_input = format!("{}.{}", b64url_json(&header), b64url_json(&claims));
+    let signature = signing_key.sign(signing_input.as_bytes());
+    format!("{}.{}", signing_input, B64URL.encode(signature.to_bytes()))
+}
+
+/// Generates a fresh Ed25519 keypair and prints it for provisioning: the
+/// private seed goes in `KEY` on the client, the public key on the backend.
+fn keygen() {
+    let mut rng = rand::rng();
+    let seed: [u8; 32] = std::array::from_fn(|_| rng.random_range(0u8..=255));
+    let signing_key = SigningKey::from_bytes(&seed);
+    println!("KEY (private seed, base64) : {}", B64.encode(seed));
+    println!("public key (base64)        : {}", B64.encode(signing_key.verifying_key().to_bytes()));
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let key = get_required_config("KEY")?;
-    let token = get_required_config("TOKEN")?;
-    let hash = get_required_config("HASH")?;
+    if env::args().nth(1).as_deref() == Some("keygen") {
+        keygen();
+        return Ok(());
+    }
+
+    let signing_key = parse_signing_key(&get_required_config("KEY")?)?;
+    let kid = get_config("KID").unwrap_or_else(|| "1".to_string());
+    let account = get_required_config("HASH")?;
     let host = get_required_config("HOST")?;
-    let endpoint = Url::parse(&format!("https://{}/data/{}/", host, hash))?;
+    let endpoint = Url::parse(&format!("https://{}/data/{}/", host, account))?;
     let sleep_str = get_config("SLEEP_DURATION").unwrap_or_else(|| "5".to_string());
     let sleep_duration: u64 = match sleep_str.parse() {
         Ok(v) => v,
@@ -227,18 +257,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build()?;
 
     loop {
-        // Generate payload (includes fetching current IP). Failures are logged
-        // but we still sleep and continue so the daemon keeps running.
-        match generate_payload(&client, &host, &token, &key).await {
-            Ok(data) => {
-                let params = [("payload", data.to_string())];
-                let send_with_retry = || client.post(endpoint.clone()).form(&params).send();
+        // Fetch the current IP and post a freshly signed token. Failures are
+        // logged but we still sleep and continue so the daemon keeps running.
+        match get_ip(&client, &host).await {
+            Ok(wanip) => {
+                let token = build_token(&signing_key, &kid, &account, &wanip);
+                let send_with_retry = || client.post(endpoint.clone()).bearer_auth(token.as_str()).send();
                 if let Err(e) = retry(send_with_retry, RETRY_DELAY, 3).await {
                     eprintln!("Failed to send update after retries: {e}");
                 }
             }
             Err(e) => {
-                eprintln!("Failed to generate payload: {e}");
+                eprintln!("Failed to fetch current IP: {e}");
             }
         }
 
@@ -267,14 +297,53 @@ mod tests {
     }
 
     #[test]
-    fn test_hmac_sha512_rfc4231_vector() {
-        // RFC 4231 test case 2 for HMAC-SHA-512 (key "Jefe").
-        let mac = hmac_sha512(b"Jefe", b"what do ya want for nothing?");
-        let hex: String = mac.iter().map(|b| format!("{:02x}", b)).collect();
-        assert_eq!(
-            hex,
-            "164b7a7bfcf819e2e395fbe73b56e0a387bd64222e831fd610270cd7ea2505549758bf75c05a994a6d034f65f8f0e6fdcaeab1a34d4a6b4b636e070a38bce737"
-        );
+    fn test_parse_signing_key() {
+        assert!(parse_signing_key(&B64.encode([0u8; 32])).is_ok());
+        assert!(parse_signing_key(&B64URL.encode([9u8; 32])).is_ok());
+        assert!(parse_signing_key(&B64.encode([0u8; 16])).is_err()); // wrong length
+        assert!(parse_signing_key("not base64!!!").is_err());
+    }
+
+    #[test]
+    fn test_token_sign_and_verify() {
+        use ed25519_dalek::{Signature, Verifier};
+
+        let signing_key = SigningKey::from_bytes(&[7u8; 32]);
+        let public_key = signing_key.verifying_key();
+
+        let token = build_token(&signing_key, "1", "acct-123", "203.0.113.7");
+        let parts: Vec<&str> = token.split('.').collect();
+        assert_eq!(parts.len(), 3, "compact JWT has three segments");
+
+        // --- Reference for the backend verifier ---
+        // 1. Decode the header and PIN the algorithm (reject anything but EdDSA).
+        let header: serde_json::Value =
+            serde_json::from_slice(&B64URL.decode(parts[0]).unwrap()).unwrap();
+        assert_eq!(header["alg"], "EdDSA");
+        assert_eq!(header["typ"], "JWT");
+
+        // 2. Verify the signature over `header.payload` using the PUBLIC key only.
+        let signing_input = format!("{}.{}", parts[0], parts[1]);
+        let sig_bytes: [u8; 64] = B64URL.decode(parts[2]).unwrap().try_into().unwrap();
+        public_key
+            .verify(signing_input.as_bytes(), &Signature::from_bytes(&sig_bytes))
+            .expect("signature must verify with the matching public key");
+
+        // 3. Validate the claims (aud/iss, subject, asserted IP, freshness window).
+        let claims: serde_json::Value =
+            serde_json::from_slice(&B64URL.decode(parts[1]).unwrap()).unwrap();
+        assert_eq!(claims["aud"], TOKEN_AUD);
+        assert_eq!(claims["iss"], TOKEN_AUD);
+        assert_eq!(claims["sub"], "acct-123");
+        assert_eq!(claims["ip"], "203.0.113.7");
+        let (iat, exp) = (claims["iat"].as_u64().unwrap(), claims["exp"].as_u64().unwrap());
+        assert_eq!(exp - iat, TOKEN_TTL_SECS);
+
+        // A different key must NOT verify.
+        let other = SigningKey::from_bytes(&[8u8; 32]).verifying_key();
+        assert!(other
+            .verify(signing_input.as_bytes(), &Signature::from_bytes(&sig_bytes))
+            .is_err());
     }
 
     #[test]
